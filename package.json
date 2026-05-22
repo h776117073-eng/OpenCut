@@ -6,7 +6,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm --prefix apps/web run export",
+    "build": "next build && tsc --noEmit",
     "build:tools": "turbo run build --filter=@opencut/tools",
     "build:wasm": "wasm-pack build rust/wasm --target bundler --out-dir pkg",
     "build:web": "turbo run build --filter=@opencut/web",
