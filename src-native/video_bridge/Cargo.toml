@@ -1,0 +1,17 @@
+[package]
+name = "video_bridge"
+version = "0.1.0"
+edition = "2024"
+description = "Native WebAssembly bridge for zero-copy video texture handles"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+console_error_panic_hook = "0.1.7"
+js-sys = "0.3.93"
+serde = { version = "1.0.228", features = ["derive"] }
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen = "0.2.116"
+web-sys = { version = "0.3.93", features = ["OffscreenCanvas", "WebGl2RenderingContext", "WebGlTexture", "ImageBitmap", "Window", "console"] }

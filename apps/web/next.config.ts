@@ -8,8 +8,11 @@ const nextConfig: NextConfig = {
 	},
 	reactStrictMode: true,
 	productionBrowserSourceMaps: true,
-	output: "standalone",
+	output: "export",
+	trailingSlash: true,
+	assetPrefix: "./",
 	images: {
+		unoptimized: true,
 		remotePatterns: [
 			{
 				protocol: "https",

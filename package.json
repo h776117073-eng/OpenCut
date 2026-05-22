@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "npm --prefix apps/web run export",
     "build:tools": "turbo run build --filter=@opencut/tools",
     "build:wasm": "wasm-pack build rust/wasm --target bundler --out-dir pkg",
     "build:web": "turbo run build --filter=@opencut/web",
@@ -20,7 +21,15 @@
     "preview:web": "turbo run preview --filter=@opencut/web",
     "publish:wasm": "bun run build:wasm && npm publish rust/wasm/pkg --access public",
     "start:tools": "turbo run start --filter=@opencut/tools",
-    "test": "bun test"
+    "test": "bun test",
+    "cap:init": "cap init OpenCut com.opencut.app --web-dir=apps/web/out",
+    "cap:export:web": "cd apps/web && bun run build && bun run export",
+    "cap:sync": "bun run cap:export:web && cap sync",
+    "cap:add:android": "cap add android",
+    "cap:add:ios": "cap add ios",
+    "cap:copy": "cap copy",
+    "cap:open:android": "cap open android",
+    "cap:open:ios": "cap open ios"
   },
   "dependencies": {
     "@types/react": "^19.2.10",
@@ -33,6 +42,9 @@
   "devDependencies": {
     "@eslint/js": "^9.39.4",
     "@next/eslint-plugin-next": "^16.2.4",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-jsx-a11y": "^6.10.2",

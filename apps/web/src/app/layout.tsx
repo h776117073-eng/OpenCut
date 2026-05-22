@@ -4,6 +4,8 @@ import "./globals.css";
 import { Toaster } from "../components/ui/sonner";
 import { ChangelogNotification } from "@/changelog/components/changelog-notification";
 import { TooltipProvider } from "../components/ui/tooltip";
+import { SafeAreaLayout } from "../components/layout/SafeAreaLayout";
+import { CapacitorInit } from "../components/capacitor-init";
 import { baseMetaData } from "./metadata";
 import { BotIdClient } from "botid/client";
 import { webEnv } from "@/env/web";
@@ -29,6 +31,10 @@ export default function RootLayout({
 		<html lang="en" suppressHydrationWarning>
 			<head>
 				<BotIdClient protect={protectedRoutes} />
+				<meta
+					name="viewport"
+					content="width=device-width, initial-scale=1, viewport-fit=cover"
+				/>
 				{process.env.NODE_ENV === "development" && (
 					<>
 						<Script
@@ -46,20 +52,23 @@ export default function RootLayout({
 					disableTransitionOnChange={true}
 				>
 					<TooltipProvider>
-						<Toaster />
-						<Script
-							src="https://cdn.databuddy.cc/databuddy.js"
-							strategy="afterInteractive"
-							async
-							data-client-id="UP-Wcoy5arxFeK7oyjMMZ"
-							data-disabled={webEnv.NODE_ENV === "development"}
-							data-track-attributes={false}
-							data-track-errors={true}
-							data-track-outgoing-links={false}
-							data-track-web-vitals={false}
-							data-track-sessions={false}
-						/>
-						{children}
+						<SafeAreaLayout>
+							<CapacitorInit />
+							<Toaster />
+							<Script
+								src="https://cdn.databuddy.cc/databuddy.js"
+								strategy="afterInteractive"
+								async
+								data-client-id="UP-Wcoy5arxFeK7oyjMMZ"
+								data-disabled={webEnv.NODE_ENV === "development"}
+								data-track-attributes={false}
+								data-track-errors={true}
+								data-track-outgoing-links={false}
+								data-track-web-vitals={false}
+								data-track-sessions={false}
+							/>
+							{children}
+						</SafeAreaLayout>
 					</TooltipProvider>
 				</ThemeProvider>
 			</body>

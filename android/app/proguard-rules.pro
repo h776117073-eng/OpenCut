@@ -1,0 +1,8 @@
+-keep class com.getcapacitor.** { *; }
+-keep class com.revenuecat.** { *; }
+-keep class com.android.billingclient.** { *; }
+-dontwarn com.getcapacitor.**
+-dontwarn com.revenuecat.**
+-dontwarn com.android.billingclient.**
+-keepattributes Signature
+-keepattributes *Annotation*
