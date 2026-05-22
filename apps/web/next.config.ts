@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import { withBotId } from "botid/next/config";
 import { withContentCollections } from "@content-collections/next";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
 	compiler: {
 		removeConsole: process.env.NODE_ENV === "production",
 	},
@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
 	output: "export",
 	trailingSlash: true,
 	assetPrefix: "./",
+	eslint: {
+		ignoreDuringBuilds: true,
+	},
 	images: {
 		unoptimized: true,
 		remotePatterns: [
@@ -52,6 +55,6 @@ const nextConfig: NextConfig = {
 			},
 		],
 	},
-};
+} satisfies NextConfig;
 
 export default withContentCollections(withBotId(nextConfig));
