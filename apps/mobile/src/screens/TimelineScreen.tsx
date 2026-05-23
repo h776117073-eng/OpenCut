@@ -7,6 +7,8 @@ import { TimelineTrack } from '@/components/TimelineTrack';
 import { TimelineRuler } from '@/components/TimelineRuler';
 import { useTimelineStore } from '@/store/useTimelineStore';
 import { initVideoProcessor } from '@/services/mediaProcessor';
+import { initializeAudioMixer } from '@/services/audioMixerService';
+import { AudioWaveformView } from '@/components/AudioWaveformView';
 import { ExportProgressOverlay } from '@/components/ExportProgressOverlay';
 
 const TRACK_DURATION_SECONDS = 60;
@@ -16,17 +18,25 @@ export function TimelineScreen() {
   const setTimelineLoaded = useAppStore((state) => state.setTimelineLoaded);
   const tracks = useTimelineStore((state) => state.tracks);
   const clips = useTimelineStore((state) => state.clips);
+  const audioClips = useTimelineStore((state) => state.audioClips);
+  const firstVideoUrl = clips.find((clip) => clip.uri)?.uri;
+  const firstAudioUrl = audioClips.find((clip) => clip.uri)?.uri;
 
   useEffect(() => {
     setTimelineLoaded(true);
-    void initVideoProcessor();
+
+    void (async () => {
+      await initVideoProcessor();
+      await initializeAudioMixer();
+    })();
   }, [setTimelineLoaded]);
 
   return (
     <SafeAreaView style={styles.screen}>
       <ExportProgressOverlay />
       <View style={styles.previewContainer}>
-        <PreviewPlayer videoUrl="file:///path/to/video.mp4" />
+        <PreviewPlayer videoUrl={firstVideoUrl} />
+        <AudioWaveformView audioUri={firstAudioUrl} style={styles.waveform} />
       </View>
       <View style={styles.timelineContainer}>
         <View style={styles.header}>
@@ -54,6 +64,10 @@ const styles = StyleSheet.create({
   previewContainer: {
     flex: 0.4,
     backgroundColor: '#000',
+  },
+  waveform: {
+    paddingVertical: 8,
+    backgroundColor: '#0f172a',
   },
   timelineContainer: {
     flex: 0.6,

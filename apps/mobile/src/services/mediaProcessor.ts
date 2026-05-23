@@ -28,12 +28,25 @@ export interface ProcessingResult {
   message: string;
 }
 
+export interface TextOverlay {
+  id: string;
+  text: string;
+  startTime: number;
+  endTime: number;
+  x: number;
+  y: number;
+  fontSize?: number;
+  color?: string;
+  backgroundColor?: string;
+}
+
 interface ExportOptions {
   quality: 'high' | 'medium' | 'low';
   codec?: 'h264' | 'h265';
   audioFormat?: 'aac' | 'opus';
   bitrate?: number; // kbps
   fps?: number;
+  textOverlays?: TextOverlay[];
 }
 
 /**
@@ -137,6 +150,7 @@ export const trimClip = async (
         quality: options?.quality ?? 'medium',
         codec: options?.codec ?? 'h264',
         bitrate: options?.bitrate ?? 5000,
+        textOverlays: options?.textOverlays,
       },
     );
 
@@ -179,6 +193,7 @@ export const splitClip = async (
       {
         quality: options?.quality ?? 'medium',
         codec: options?.codec ?? 'h264',
+        textOverlays: options?.textOverlays,
       },
     );
 
@@ -224,6 +239,7 @@ export const rippleCut = async (
       {
         quality: options?.quality ?? 'medium',
         codec: options?.codec ?? 'h264',
+        textOverlays: options?.textOverlays,
       },
     );
 
@@ -301,6 +317,20 @@ const normalizeFileUri = (path: string): string =>
 
 const clampProgress = (value: number): number => Math.max(0, Math.min(100, Math.round(value)));
 
+const cleanupTemporaryFiles = async (paths: string[]): Promise<void> => {
+  await Promise.all(
+    paths.map(async (filePath) => {
+      try {
+        if (await RNFS.exists(filePath)) {
+          await RNFS.unlink(filePath);
+        }
+      } catch {
+        // Ignore cleanup failures; nothing we can do here.
+      }
+    }),
+  );
+};
+
 /**
  * Execute multiple video cut operations in sequence.
  * Processes trims, splits, and ripple cuts using native modules.
@@ -311,7 +341,10 @@ export const executeVideoCutOperations = async (
   outputPath: string,
   options?: ExportOptions,
 ): Promise<ProcessingResult> => {
-  const { setIsExporting, setExportProgress } = useTimelineStore.getState();
+  const { setIsExporting, setExportProgress, clearCancelExportRequest } = useTimelineStore.getState();
+  const tempFiles: string[] = [];
+  let progressTimer: ReturnType<typeof setInterval> | null = null;
+
   try {
     const sortedOps = [...operations].sort((a, b) => a.startTime - b.startTime);
     let currentInput = inputPath;
@@ -322,7 +355,7 @@ export const executeVideoCutOperations = async (
     setIsExporting(true);
     setExportProgress(0);
 
-    const progressTimer = setInterval(() => {
+    progressTimer = setInterval(() => {
       simulatedProgress = Math.min(99, simulatedProgress + 1);
       setExportProgress(simulatedProgress);
     }, 180);
@@ -330,12 +363,30 @@ export const executeVideoCutOperations = async (
     console.log(`[VideoProcessor] Executing ${sortedOps.length} cut operations`);
 
     for (let i = 0; i < sortedOps.length; i++) {
+      if (useTimelineStore.getState().cancelExportRequested) {
+        clearInterval(progressTimer);
+        await cancelProcessing();
+        await cleanupTemporaryFiles(tempFiles);
+        setExportProgress(0);
+        setIsExporting(false);
+        clearCancelExportRequest();
+
+        return {
+          success: false,
+          message: 'Video export was canceled by the user.',
+        };
+      }
+
       const op = sortedOps[i];
       const nextOutput =
         i === sortedOps.length - 1
           ? outputPath
           : outputPath.replace(/\.mp4$/, `.${i + 1}.mp4`);
       currentOutput = nextOutput;
+
+      if (currentOutput !== outputPath) {
+        tempFiles.push(currentOutput);
+      }
 
       console.log(`[VideoProcessor] Operation ${i + 1}/${sortedOps.length}: ${op.type}`);
 
@@ -360,16 +411,37 @@ export const executeVideoCutOperations = async (
           break;
 
         default:
+          if (progressTimer) {
+            clearInterval(progressTimer);
+          }
+          await cleanupTemporaryFiles(tempFiles);
+          setExportProgress(0);
+          setIsExporting(false);
+          clearCancelExportRequest();
           return {
             success: false,
             message: `Unknown operation type: ${op.type}`,
           };
       }
 
+      if (result.success) {
+        const audioState = useTimelineStore.getState();
+
+        if (op.type === 'split') {
+          audioState.splitAudioClip(op.clipId, op.startTime);
+        } else {
+          audioState.syncAudioClipsWithVideoEdit(op.startTime, op.endTime);
+        }
+      }
+
       if (!result.success) {
-        clearInterval(progressTimer);
+        if (progressTimer) {
+          clearInterval(progressTimer);
+        }
+        await cleanupTemporaryFiles(tempFiles);
         setExportProgress(0);
         setIsExporting(false);
+        clearCancelExportRequest();
         return {
           success: false,
           message: `Operation ${op.type} failed for clip ${op.clipId}`,
@@ -383,9 +455,12 @@ export const executeVideoCutOperations = async (
       simulatedProgress = stepProgress;
     }
 
-    clearInterval(progressTimer);
+    if (progressTimer) {
+      clearInterval(progressTimer);
+    }
     setExportProgress(100);
     setIsExporting(false);
+    clearCancelExportRequest();
 
     return {
       success: true,
@@ -394,6 +469,11 @@ export const executeVideoCutOperations = async (
       framesProcessed: sortedOps.length,
     };
   } catch (error) {
+    clearCancelExportRequest();
+    if (progressTimer) {
+      clearInterval(progressTimer);
+    }
+    await cleanupTemporaryFiles(tempFiles);
     setExportProgress(0);
     setIsExporting(false);
     return {
@@ -511,6 +591,7 @@ export const exportVideo = async (
         audioFormat: options.audioFormat ?? 'aac',
         bitrate,
         fps: options.fps ?? 30,
+        textOverlays: options.textOverlays,
       },
     );
 
@@ -579,6 +660,12 @@ export const cancelProcessing = async (): Promise<void> => {
   } catch (error) {
     console.error('Failed to cancel processing:', error);
   }
+};
+
+export const requestCancelVideoProcessing = async (): Promise<void> => {
+  const { requestCancelExport } = useTimelineStore.getState();
+  requestCancelExport();
+  await cancelProcessing();
 };
 
 /**
