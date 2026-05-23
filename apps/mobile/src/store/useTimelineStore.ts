@@ -22,9 +22,13 @@ interface TimelineState {
   tracks: TimelineTrack[];
   clips: TimelineClip[];
   selectedClipId: string | null;
+  isExporting: boolean;
+  exportProgress: number;
   selectClip: (id: string) => void;
   moveClip: (id: string, start: string) => void;
   addImportedClip: (clip: TimelineClip) => void;
+  setIsExporting: (value: boolean) => void;
+  setExportProgress: (value: number) => void;
 }
 
 export const useTimelineStore = create<TimelineState>((set) => ({
@@ -41,6 +45,8 @@ export const useTimelineStore = create<TimelineState>((set) => ({
     { id: 'clip-5', title: 'Glow', start: '00:15', duration: '00:08', trackId: 'track-3', status: 'Editing' },
   ],
   selectedClipId: null,
+  isExporting: false,
+  exportProgress: 0,
   selectClip: (id: string) => set({ selectedClipId: id }),
   moveClip: (id: string, start: string) =>
     set((state) => ({
@@ -53,4 +59,7 @@ export const useTimelineStore = create<TimelineState>((set) => ({
       clips: [...state.clips, clip],
       selectedClipId: clip.id,
     })),
+  setIsExporting: (value: boolean) => set({ isExporting: value }),
+  setExportProgress: (value: number) =>
+    set({ exportProgress: Math.max(0, Math.min(100, value)) }),
 }));

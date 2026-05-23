@@ -7,6 +7,7 @@ import { TimelineTrack } from '@/components/TimelineTrack';
 import { TimelineRuler } from '@/components/TimelineRuler';
 import { useTimelineStore } from '@/store/useTimelineStore';
 import { initVideoProcessor } from '@/services/mediaProcessor';
+import { ExportProgressOverlay } from '@/components/ExportProgressOverlay';
 
 const TRACK_DURATION_SECONDS = 60;
 const UNIT_PX = 18;
@@ -23,6 +24,7 @@ export function TimelineScreen() {
 
   return (
     <SafeAreaView style={styles.screen}>
+      <ExportProgressOverlay />
       <View style={styles.previewContainer}>
         <PreviewPlayer videoUrl="file:///path/to/video.mp4" />
       </View>

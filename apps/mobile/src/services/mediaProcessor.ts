@@ -1,6 +1,7 @@
 import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
 import CameraRoll from '@react-native-community/cameraroll';
 import RNFS from 'react-native-fs';
+import { useTimelineStore } from '@/store/useTimelineStore';
 import type { TimelineClip } from '@/store/useTimelineStore';
 
 /**
@@ -298,6 +299,8 @@ const ensureDocumentDirectory = async (): Promise<void> => {
 const normalizeFileUri = (path: string): string =>
   path.startsWith('file://') ? path : `file://${path}`;
 
+const clampProgress = (value: number): number => Math.max(0, Math.min(100, Math.round(value)));
+
 /**
  * Execute multiple video cut operations in sequence.
  * Processes trims, splits, and ripple cuts using native modules.
@@ -308,10 +311,21 @@ export const executeVideoCutOperations = async (
   outputPath: string,
   options?: ExportOptions,
 ): Promise<ProcessingResult> => {
+  const { setIsExporting, setExportProgress } = useTimelineStore.getState();
   try {
     const sortedOps = [...operations].sort((a, b) => a.startTime - b.startTime);
     let currentInput = inputPath;
     let currentOutput = outputPath;
+    let simulatedProgress = 0;
+    const totalOps = Math.max(sortedOps.length, 1);
+
+    setIsExporting(true);
+    setExportProgress(0);
+
+    const progressTimer = setInterval(() => {
+      simulatedProgress = Math.min(99, simulatedProgress + 1);
+      setExportProgress(simulatedProgress);
+    }, 180);
 
     console.log(`[VideoProcessor] Executing ${sortedOps.length} cut operations`);
 
@@ -353,6 +367,9 @@ export const executeVideoCutOperations = async (
       }
 
       if (!result.success) {
+        clearInterval(progressTimer);
+        setExportProgress(0);
+        setIsExporting(false);
         return {
           success: false,
           message: `Operation ${op.type} failed for clip ${op.clipId}`,
@@ -361,7 +378,14 @@ export const executeVideoCutOperations = async (
       }
 
       currentInput = result.outputPath ?? currentOutput;
+      const stepProgress = clampProgress(((i + 1) / totalOps) * 100);
+      setExportProgress(stepProgress);
+      simulatedProgress = stepProgress;
     }
+
+    clearInterval(progressTimer);
+    setExportProgress(100);
+    setIsExporting(false);
 
     return {
       success: true,
@@ -370,6 +394,8 @@ export const executeVideoCutOperations = async (
       framesProcessed: sortedOps.length,
     };
   } catch (error) {
+    setExportProgress(0);
+    setIsExporting(false);
     return {
       success: false,
       message: 'Video processing pipeline failed',
