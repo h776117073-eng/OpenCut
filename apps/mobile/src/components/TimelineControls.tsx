@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePlayheadStore } from '@/store/usePlayheadStore';
 import { useTimelineStore } from '@/store/useTimelineStore';
-import { executeVideoCuts, executeVideoCutOperations, saveToCameraRoll } from '@/services/mediaProcessor';
+import { executeVideoCutOperations, saveToCameraRoll, requestCancelVideoProcessing } from '@/services/mediaProcessor';
 import { pickVideoFromGallery } from '@/services/mediaPickerService';
 import { formatTimecode, parseTimecode } from '@/utils/time';
 
@@ -20,7 +20,10 @@ export function TimelineControls({ durationSeconds }: TimelineControlsProps) {
   const advanceTime = usePlayheadStore((state) => state.advanceTime);
   const clips = useTimelineStore((state) => state.clips);
   const selectedClipId = useTimelineStore((state) => state.selectedClipId);
+  const isExporting = useTimelineStore((state) => state.isExporting);
+  const textClips = useTimelineStore((state) => state.textClips);
   const addImportedClip = useTimelineStore((state) => state.addImportedClip);
+  const addTextClip = useTimelineStore((state) => state.addTextClip);
   const selectedClip = clips.find((clip) => clip.id === selectedClipId);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -85,6 +88,24 @@ export function TimelineControls({ durationSeconds }: TimelineControlsProps) {
     const clipStart = parseTimecode(selectedClip.start);
     const clipDuration = parseTimecode(selectedClip.duration);
 
+    const overlayClips = textClips
+      .filter((caption) => {
+        const captionStart = parseTimecode(caption.start);
+        const captionEnd = parseTimecode(caption.end);
+        return captionStart < clipStart + clipDuration && captionEnd > clipStart;
+      })
+      .map((caption) => ({
+        id: caption.id,
+        text: caption.text,
+        startTime: Math.max(0, parseTimecode(caption.start) - clipStart),
+        endTime: Math.max(0, Math.min(clipDuration, parseTimecode(caption.end) - clipStart)),
+        x: caption.x,
+        y: caption.y,
+        fontSize: caption.fontSize ?? 18,
+        color: caption.color ?? '#ffffff',
+        backgroundColor: caption.backgroundColor ?? 'rgba(15,23,42,0.75)',
+      }));
+
     const result = await executeVideoCutOperations(
       selectedClip.uri,
       [
@@ -96,7 +117,7 @@ export function TimelineControls({ durationSeconds }: TimelineControlsProps) {
         },
       ],
       `export-${selectedClip.id}.mp4`,
-      { quality: 'high' },
+      { quality: 'high', textOverlays: overlayClips },
     );
 
     if (!result.success || !result.outputPath) {
@@ -110,6 +131,35 @@ export function TimelineControls({ durationSeconds }: TimelineControlsProps) {
     } catch (error) {
       Alert.alert('خطأ في الحفظ', error instanceof Error ? error.message : 'فشل حفظ الملف.');
     }
+  };
+
+  const handleAddCaption = () => {
+    const captionStart = Math.floor(currentTime);
+    const captionEnd = Math.min(durationSeconds, captionStart + 5);
+
+    addTextClip({
+      id: `caption-${Date.now()}`,
+      text: 'نص توضيحي',
+      start: formatTimecode(captionStart),
+      end: formatTimecode(captionEnd),
+      x: 24,
+      y: 40,
+      fontSize: 18,
+      color: '#ffffff',
+      backgroundColor: 'rgba(15,23,42,0.75)',
+    });
+
+    Alert.alert('النص التوضيحي', 'تم إضافة نص توضيحي جديد. اسحبه داخل معاينة الفيديو لتغيير موضعه.');
+  };
+
+  const handleCancelExport = async () => {
+    if (!isExporting) {
+      Alert.alert('إلغاء التصدير', 'لا توجد عملية تصدير نشطة في الوقت الحالي.');
+      return;
+    }
+
+    await requestCancelVideoProcessing();
+    Alert.alert('إلغاء التصدير', 'جاري إلغاء العملية. سيتم التوقف فوراً عند الإمكان.');
   };
 
   const handleCutAction = async (action: CutActionType) => {
@@ -200,8 +250,16 @@ export function TimelineControls({ durationSeconds }: TimelineControlsProps) {
         <Pressable style={styles.secondaryButton} onPress={handleImportVideo}>
           <Text style={styles.secondaryText}>Import Video</Text>
         </Pressable>
+        <Pressable style={styles.secondaryButton} onPress={handleAddCaption}>
+          <Text style={styles.secondaryText}>Add Caption</Text>
+        </Pressable>
+      </View>
+      <View style={styles.importExportRow}>
         <Pressable style={styles.secondaryButton} onPress={handleExportSelectedClip}>
           <Text style={styles.secondaryText}>Export MP4</Text>
+        </Pressable>
+        <Pressable style={styles.secondaryButton} onPress={handleCancelExport}>
+          <Text style={styles.secondaryText}>Cancel Export</Text>
         </Pressable>
       </View>
     </View>

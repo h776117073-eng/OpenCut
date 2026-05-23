@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Canvas, Circle, Path, Skia } from '@shopify/react-native-skia';
 import Animated, {
   useSharedValue,
@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
+import { requestCancelVideoProcessing } from '@/services/mediaProcessor';
 import { useTimelineStore } from '@/store/useTimelineStore';
 
 const AnimatedView = Animated.createAnimatedComponent(View);
@@ -46,7 +47,7 @@ export function ExportProgressOverlay() {
   }
 
   return (
-    <View style={styles.overlay} pointerEvents="none">
+    <View style={styles.overlay} pointerEvents="auto">
       <AnimatedView style={[styles.spinnerWrapper, rotationStyle]}>
         <Canvas style={styles.canvas}>
           <Circle
@@ -71,6 +72,9 @@ export function ExportProgressOverlay() {
         <Text style={styles.title}>جاري تصدير عملك الفني...</Text>
         <Text style={styles.percentage}>{exportProgress}%</Text>
         <Text style={styles.subtitle}>يرجى عدم إغلاق التطبيق.</Text>
+        <Pressable style={styles.cancelButton} onPress={requestCancelVideoProcessing}>
+          <Text style={styles.cancelText}>إلغاء التصدير</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -122,5 +126,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  cancelButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: '#ef4444',
+    borderRadius: 14,
+  },
+  cancelText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });

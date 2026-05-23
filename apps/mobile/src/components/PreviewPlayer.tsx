@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { View, ViewStyle } from 'react-native';
-import { Canvas, Image as SkiaImage, Skia } from '@shopify/react-native-skia';
+import { LayoutChangeEvent, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Canvas } from '@shopify/react-native-skia';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -9,6 +9,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Video, { OnProgressData, VideoRef } from 'react-native-video';
 import { usePlayheadStore } from '@/store/usePlayheadStore';
+import { useTimelineStore } from '@/store/useTimelineStore';
+import { parseTimecode } from '@/utils/time';
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
@@ -21,19 +23,25 @@ export function PreviewPlayer({ videoUrl }: PreviewPlayerProps) {
   const isPlaying = usePlayheadStore((state) => state.isPlaying);
   const setCurrentTime = usePlayheadStore((state) => state.setCurrentTime);
   const setIsPlaying = usePlayheadStore((state) => state.setIsPlaying);
+  const textClips = useTimelineStore((state) => state.textClips);
+  const updateTextClipPosition = useTimelineStore((state) => state.updateTextClipPosition);
 
   const videoRef = useRef<VideoRef>(null);
   const canvasProgress = useSharedValue(0);
   const videoDuration = useRef(0);
+  const containerLayout = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  const dragState = useRef<{
+    id: string;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
 
-  // تحديث الفيديو عند تغيير currentTime من Timeline
   useEffect(() => {
     if (videoRef.current && !isPlaying) {
       videoRef.current.seek(currentTime);
     }
   }, [currentTime, isPlaying]);
 
-  // تحديث isPlaying عند التشغيل/الإيقاف
   useEffect(() => {
     canvasProgress.value = withSpring(currentTime, {
       damping: 15,
@@ -42,26 +50,70 @@ export function PreviewPlayer({ videoUrl }: PreviewPlayerProps) {
     });
   }, [currentTime, canvasProgress]);
 
-  // معالج تقدم الفيديو
   const handleProgress = (data: OnProgressData) => {
     const newTime = data.currentTime;
     const duration = data.seekableDuration || videoDuration.current;
 
-    // تحديث المخزن عند التشغيل الفعلي للفيديو
     if (isPlaying && Math.abs(newTime - currentTime) > 0.1) {
       runOnJS(setCurrentTime)(newTime);
     }
   };
 
-  // معالج انتهاء الفيديو
   const handleEnd = () => {
     runOnJS(setIsPlaying)(false);
     runOnJS(setCurrentTime)(0);
   };
 
-  // معالج حساب المدة
   const handleLoad = (data: { duration: number }) => {
     videoDuration.current = data.duration;
+  };
+
+  const handleLayout = (event: LayoutChangeEvent) => {
+    containerLayout.current = event.nativeEvent.layout;
+  };
+
+  const activeCaptions = textClips.filter((clip) => {
+    const start = parseTimecode(clip.start);
+    const end = parseTimecode(clip.end);
+    return currentTime >= start && currentTime <= end;
+  });
+
+  const handleCaptionGrant = (id: string, event: { nativeEvent: { pageX: number; pageY: number } }) => {
+    const layout = containerLayout.current;
+    const { pageX, pageY } = event.nativeEvent;
+    const caption = textClips.find((clip) => clip.id === id);
+
+    if (!caption) {
+      return;
+    }
+
+    const pointerX = pageX - layout.x;
+    const pointerY = pageY - layout.y;
+
+    dragState.current = {
+      id,
+      offsetX: pointerX - caption.x,
+      offsetY: pointerY - caption.y,
+    };
+  };
+
+  const handleResponderMove = (event: { nativeEvent: { pageX: number; pageY: number } }) => {
+    if (!dragState.current) {
+      return;
+    }
+
+    const layout = containerLayout.current;
+    const { pageX, pageY } = event.nativeEvent;
+    const pointerX = pageX - layout.x;
+    const pointerY = pageY - layout.y;
+    const nextX = Math.max(0, pointerX - dragState.current.offsetX);
+    const nextY = Math.max(0, pointerY - dragState.current.offsetY);
+
+    updateTextClipPosition(dragState.current.id, nextX, nextY);
+  };
+
+  const handleResponderRelease = () => {
+    dragState.current = null;
   };
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -71,38 +123,41 @@ export function PreviewPlayer({ videoUrl }: PreviewPlayerProps) {
   return (
     <AnimatedView
       style={[
-        {
-          flex: 1,
-          backgroundColor: '#000',
-          justifyContent: 'center',
-          alignItems: 'center',
-          overflow: 'hidden',
-        } as ViewStyle,
+        styles.root,
         animatedStyle,
       ]}
     >
-      {/* Canvas Skia لرسم الإطارات */}
-      <Canvas
-        style={{
-          flex: 1,
-          width: '100%',
-          backgroundColor: '#000',
-        }}
-      >
-        {/* سيتم رسم إطارات الفيديو هنا عند التطبيق الكامل */}
-      </Canvas>
+      <View style={styles.previewLayer} onLayout={handleLayout}>
+        <Canvas style={styles.canvas} />
 
-      {/* مشغل الفيديو المخفي (يغذي الإطارات) */}
+        {activeCaptions.map((caption) => (
+          <View
+            key={caption.id}
+            style={[
+              styles.captionBubble,
+              {
+                left: caption.x,
+                top: caption.y,
+                backgroundColor: caption.backgroundColor ?? 'rgba(15,23,42,0.75)',
+              },
+            ]}
+            onStartShouldSetResponder={() => true}
+            onResponderGrant={(event) => handleCaptionGrant(caption.id, event)}
+            onResponderMove={handleResponderMove}
+            onResponderRelease={handleResponderRelease}
+          >
+            <Text style={[styles.captionText, { fontSize: caption.fontSize ?? 18, color: caption.color ?? '#ffffff' }]}> 
+              {caption.text}
+            </Text>
+          </View>
+        ))}
+      </View>
+
       {videoUrl && (
         <Video
           ref={videoRef}
           source={{ uri: videoUrl }}
-          style={{
-            position: 'absolute',
-            width: 0,
-            height: 0,
-            opacity: 0,
-          }}
+          style={styles.hiddenVideo}
           paused={!isPlaying}
           onProgress={handleProgress}
           onEnd={handleEnd}
@@ -113,39 +168,73 @@ export function PreviewPlayer({ videoUrl }: PreviewPlayerProps) {
         />
       )}
 
-      {/* عرض نص توضيحي إذا لم يكن هناك فيديو */}
       {!videoUrl && (
-        <View
-          style={{
-            position: 'absolute',
-            justifyContent: 'center',
-            alignItems: 'center',
-            width: '100%',
-            height: '100%',
-          }}
-        >
-          <View
-            style={{
-              padding: 20,
-              backgroundColor: '#1f2937',
-              borderRadius: 12,
-              alignItems: 'center',
-            }}
-          >
-            <View
-              style={{
-                width: 60,
-                height: 60,
-                borderRadius: 30,
-                backgroundColor: '#374151',
-                justifyContent: 'center',
-                alignItems: 'center',
-                marginBottom: 12,
-              }}
-            />
+        <View style={styles.emptyStateContainer}>
+          <View style={styles.emptyStateCard}>
+            <View style={styles.emptyStateIcon} />
           </View>
         </View>
       )}
     </AnimatedView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  previewLayer: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#000',
+  },
+  canvas: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: '#000',
+  },
+  hiddenVideo: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    opacity: 0,
+  },
+  captionBubble: {
+    position: 'absolute',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    maxWidth: '75%',
+    elevation: 2,
+  },
+  captionText: {
+    color: '#ffffff',
+    letterSpacing: 0.2,
+    lineHeight: 22,
+    fontWeight: '700',
+  },
+  emptyStateContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+  },
+  emptyStateCard: {
+    padding: 20,
+    backgroundColor: '#1f2937',
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  emptyStateIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#374151',
+    marginBottom: 12,
+  },
+});
