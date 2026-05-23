@@ -128,10 +128,16 @@ onProgress() → لا يحدّث usePlayheadStore
 - معالجة أخطاء الفك فك (Decoding)
 - معالجة الأخطاء في الحمل والتشغيل
 
-### المرحلة 3: جسر FFmpeg الأصلي
-- إنشاء JSI module لتنفيذ FFmpeg
-- تطبيق cropAndExportVideo
-- معالجة سلسلة الأوامر
+### المرحلة 3: جسر المعالجة الأصلية للفيديو
+- إنشاء طبقة خدمات أصلية لمعالجة الفيديو باستخدام AVFoundation و Jetpack Media3
+- دعم عمليات القص العادي، التقسيم، وRipple Cut
+- ربط أوامر المعالجة بأزرار لوحة أدوات التايملاين السفلية
+
+### المرحلة 4: استيراد وتصدير فيديو حقيقي
+- تثبيت واستخدام react-native-image-picker لاختيار الفيديو من معرض الهاتف
+- قراءة URI واسم الفيديو ومدة التشغيل واستيرادها كمقطع واقعي داخل التايملاين
+- حفظ المقاطع المُعالجة في مجلد المستندات الخاص بالتطبيق وتصديرها بصيغة `.mp4`
+- حفظ الفيديو النهائي في معرض الصور باستخدام CameraRoll
 
 ## 📝 ملخص التغييرات
 
@@ -140,7 +146,12 @@ onProgress() → لا يحدّث usePlayheadStore
 | `package.json` | ✅ أضفنا react-native-video و expo-av |
 | `PreviewPlayer.tsx` | ✅ إعادة بناء كاملة مع Canvas + Video |
 | `usePlayheadStore.ts` | ✅ تم إصلاح أنواع Reanimated |
-| `TimelineScreen.tsx` | ✅ تحديث لإضافة PreviewPlayer |
+| `TimelineScreen.tsx` | ✅ تحديث لإضافة PreviewPlayer وتهيئة محرك الفيديو الأصلي |
+| `TimelineControls.tsx` | ✅ أزرار Trim / Split / Ripple مرتبطة بخدمات المعالجة الأصلية وواجهات الاستيراد/التصدير |
+| `src/services/mediaProcessor.ts` | ✅ إضافة executeVideoCuts وsaveToCameraRoll مع حفظ نتائج `.mp4` داخل مجلد المستندات |
+| `src/services/mediaPickerService.ts` | ✅ إضافة خدمة اختيار الفيديو من المعرض واسترجاع URI والاسم والمدة |
+| `ios/mobile/Info.plist` | ✅ إضافة أوصاف أذونات مكتبة الصور |
+| `android/app/src/main/AndroidManifest.xml` | ✅ إضافة الأذونات المطلوبة لقراءة وكتابة ملفات الوسائط |
 
 ## 🚀 الحالة الحالية
 - **✅ جاهز للاختبار على iOS و Android**

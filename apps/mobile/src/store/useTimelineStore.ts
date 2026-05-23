@@ -7,6 +7,10 @@ export interface TimelineClip {
   duration: string;
   trackId: string;
   status: 'Ready' | 'Editing' | 'Pending';
+  uri?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
 }
 
 export interface TimelineTrack {
@@ -20,6 +24,7 @@ interface TimelineState {
   selectedClipId: string | null;
   selectClip: (id: string) => void;
   moveClip: (id: string, start: string) => void;
+  addImportedClip: (clip: TimelineClip) => void;
 }
 
 export const useTimelineStore = create<TimelineState>((set) => ({
@@ -42,5 +47,10 @@ export const useTimelineStore = create<TimelineState>((set) => ({
       clips: state.clips.map((clip) =>
         clip.id === id ? { ...clip, start } : clip,
       ),
+    })),
+  addImportedClip: (clip: TimelineClip) =>
+    set((state) => ({
+      clips: [...state.clips, clip],
+      selectedClipId: clip.id,
     })),
 }));

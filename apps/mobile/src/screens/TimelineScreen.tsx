@@ -6,6 +6,7 @@ import { TimelineControls } from '@/components/TimelineControls';
 import { TimelineTrack } from '@/components/TimelineTrack';
 import { TimelineRuler } from '@/components/TimelineRuler';
 import { useTimelineStore } from '@/store/useTimelineStore';
+import { initVideoProcessor } from '@/services/mediaProcessor';
 
 const TRACK_DURATION_SECONDS = 60;
 const UNIT_PX = 18;
@@ -17,6 +18,7 @@ export function TimelineScreen() {
 
   useEffect(() => {
     setTimelineLoaded(true);
+    void initVideoProcessor();
   }, [setTimelineLoaded]);
 
   return (

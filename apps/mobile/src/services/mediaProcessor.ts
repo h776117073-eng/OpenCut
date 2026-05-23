@@ -1,4 +1,6 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, PermissionsAndroid, Platform } from 'react-native';
+import CameraRoll from '@react-native-community/cameraroll';
+import RNFS from 'react-native-fs';
 import type { TimelineClip } from '@/store/useTimelineStore';
 
 /**
@@ -16,7 +18,7 @@ interface VideoCutOperation {
   rippleOffset?: number; // for ripple cuts
 }
 
-interface ProcessingResult {
+export interface ProcessingResult {
   success: boolean;
   outputPath?: string;
   duration?: number;
@@ -72,6 +74,41 @@ const timeToSeconds = (timeStr: string): number => {
   const minutes = parseInt(parts[0], 10) || 0;
   const seconds = parseInt(parts[1], 10) || 0;
   return minutes * 60 + seconds;
+};
+
+const buildTrimOperationsFromClips = (clips: TimelineClip[]): VideoCutOperation[] =>
+  clips.map((clip) => ({
+    type: 'trim',
+    clipId: clip.id,
+    startTime: timeToSeconds(clip.start),
+    endTime: timeToSeconds(clip.start) + timeToSeconds(clip.duration),
+  }));
+
+const buildSplitOperation = (clip: TimelineClip): VideoCutOperation => {
+  const startSeconds = timeToSeconds(clip.start);
+  const durationSeconds = timeToSeconds(clip.duration);
+
+  return {
+    type: 'split',
+    clipId: clip.id,
+    startTime: startSeconds + Math.floor(durationSeconds / 2),
+    endTime: startSeconds + durationSeconds,
+  };
+};
+
+const buildRippleOperation = (clip: TimelineClip): VideoCutOperation => {
+  const startSeconds = timeToSeconds(clip.start);
+  const durationSeconds = timeToSeconds(clip.duration);
+  const segmentLength = Math.min(3, Math.floor(durationSeconds / 3)) || 1;
+  const removeStart = startSeconds + Math.floor((durationSeconds - segmentLength) / 2);
+
+  return {
+    type: 'ripple',
+    clipId: clip.id,
+    startTime: removeStart,
+    endTime: removeStart + segmentLength,
+    rippleOffset: segmentLength,
+  };
 };
 
 /**
@@ -206,61 +243,106 @@ export const rippleCut = async (
   }
 };
 
+const requestAndroidGalleryPermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
+  const permission =
+    Platform.Version >= 33
+      ? ((PermissionsAndroid.PERMISSIONS as any).READ_MEDIA_VIDEO ?? 'android.permission.READ_MEDIA_VIDEO')
+      : PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
+
+  const granted = await PermissionsAndroid.request(permission, {
+    title: 'Gallery access permission',
+    message: 'OpenCut يحتاج إذن الوصول لمعرض الفيديو لاستيراد وسائط الفيديو.',
+    buttonPositive: 'سماح',
+    buttonNegative: 'رفض',
+  });
+
+  return granted === PermissionsAndroid.RESULTS.GRANTED;
+};
+
+const requestAndroidWritePermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
+  const permission =
+    Platform.Version >= 33
+      ? ((PermissionsAndroid.PERMISSIONS as any).READ_MEDIA_VIDEO ?? 'android.permission.READ_MEDIA_VIDEO')
+      : PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
+
+  const granted = await PermissionsAndroid.request(permission, {
+    title: 'Storage write permission',
+    message: 'OpenCut يحتاج إذن الكتابة لحفظ الفيديو النهائي في معرض الصور.',
+    buttonPositive: 'سماح',
+    buttonNegative: 'رفض',
+  });
+
+  return granted === PermissionsAndroid.RESULTS.GRANTED;
+};
+
+const createDocumentOutputPath = (name: string): string => {
+  const fileName = `${name.replace(/[^a-zA-Z0-9_\-]/g, '_')}-${Date.now()}.mp4`;
+  return `${RNFS.DocumentDirectoryPath}/${fileName}`;
+};
+
+const ensureDocumentDirectory = async (): Promise<void> => {
+  const directory = RNFS.DocumentDirectoryPath;
+  if (!(await RNFS.exists(directory))) {
+    await RNFS.mkdir(directory);
+  }
+};
+
+const normalizeFileUri = (path: string): string =>
+  path.startsWith('file://') ? path : `file://${path}`;
+
 /**
- * Execute multiple video cuts in sequence
- * Processes all cut operations and returns combined result
+ * Execute multiple video cut operations in sequence.
+ * Processes trims, splits, and ripple cuts using native modules.
  */
-export const executeVideoCuts = async (
+export const executeVideoCutOperations = async (
   inputPath: string,
   operations: VideoCutOperation[],
   outputPath: string,
   options?: ExportOptions,
 ): Promise<ProcessingResult> => {
   try {
-    // Sort operations by start time to ensure proper execution order
     const sortedOps = [...operations].sort((a, b) => a.startTime - b.startTime);
-
     let currentInput = inputPath;
     let currentOutput = outputPath;
-    let totalDuration = 0;
 
     console.log(`[VideoProcessor] Executing ${sortedOps.length} cut operations`);
 
     for (let i = 0; i < sortedOps.length; i++) {
       const op = sortedOps[i];
+      const nextOutput =
+        i === sortedOps.length - 1
+          ? outputPath
+          : outputPath.replace(/\.mp4$/, `.${i + 1}.mp4`);
+      currentOutput = nextOutput;
+
       console.log(`[VideoProcessor] Operation ${i + 1}/${sortedOps.length}: ${op.type}`);
 
       let result: ProcessingResult;
 
       switch (op.type) {
         case 'trim':
-          result = await trimClip(
-            currentInput,
-            op.startTime,
-            op.endTime,
-            currentOutput,
-            options,
-          );
+          result = await trimClip(currentInput, op.startTime, op.endTime, currentOutput, options);
           break;
 
         case 'split':
           result = await splitClip(
             currentInput,
             op.startTime,
-            currentOutput,
+            currentOutput.replace(/\.mp4$/, ''),
             options,
           );
           break;
 
         case 'ripple':
-          result = await rippleCut(
-            currentInput,
-            op.startTime,
-            op.endTime,
-            currentOutput,
-            options,
-          );
-          totalDuration += (op.rippleOffset ?? 0);
+          result = await rippleCut(currentInput, op.startTime, op.endTime, currentOutput, options);
           break;
 
         default:
@@ -278,7 +360,6 @@ export const executeVideoCuts = async (
         };
       }
 
-      // Use output as input for next operation
       currentInput = result.outputPath ?? currentOutput;
     }
 
@@ -295,6 +376,34 @@ export const executeVideoCuts = async (
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
+};
+
+/**
+ * Execute the default set of timeline trims for a list of clips.
+ */
+export const executeVideoCuts = async (
+  inputPath: string,
+  clips: TimelineClip[],
+  outputName?: string,
+  options?: ExportOptions,
+): Promise<ProcessingResult> => {
+  await ensureDocumentDirectory();
+  const outputPath = outputName
+    ? createDocumentOutputPath(outputName)
+    : createDocumentOutputPath('final-video');
+  const operations = buildTrimOperationsFromClips(clips);
+  return executeVideoCutOperations(inputPath, operations, outputPath, options);
+};
+
+export const saveToCameraRoll = async (filePath: string): Promise<string> => {
+  const hasPermission = await requestAndroidWritePermission();
+
+  if (!hasPermission) {
+    throw new Error('Storage permission denied for saving video.');
+  }
+
+  const uri = normalizeFileUri(filePath);
+  return CameraRoll.save(uri, { type: 'video' });
 };
 
 /**
