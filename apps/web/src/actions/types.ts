@@ -1,5 +1,6 @@
 import type { MutableRefObject } from "react";
 import type { TAction } from "./definitions";
+import { ACTIONS } from "./definitions";
 
 export type { TAction };
 
@@ -42,3 +43,11 @@ export type TActionHandlerOptions =
 	| MutableRefObject<boolean>
 	| boolean
 	| undefined;
+
+export function isActionWithOptionalArgs(
+	value: string,
+): value is TActionWithOptionalArgs {
+	return (
+		Object.keys(ACTIONS) as Array<TActionWithOptionalArgs>
+	).includes(value as TActionWithOptionalArgs);
+}

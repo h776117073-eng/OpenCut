@@ -18,11 +18,11 @@ export interface BandwidthSimulationOptions {
 }
 
 const effectiveTypeBandwidthMap: Record<string, number> = {
-	slow-2g: 50,
-	2g: 250,
-	3g: 900,
-	4g: 4000,
-	5g: 10000,
+	"slow-2g": 50,
+	"2g": 250,
+	"3g": 900,
+	"4g": 4000,
+	"5g": 10000,
 	unknown: 1200,
 };
 

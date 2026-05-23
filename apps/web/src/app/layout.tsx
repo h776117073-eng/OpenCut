@@ -55,6 +55,7 @@ export default function RootLayout({
 						<SafeAreaLayout>
 							<CapacitorInit />
 							<Toaster />
+							<ChangelogNotification />
 							<Script
 								src="https://cdn.databuddy.cc/databuddy.js"
 								strategy="afterInteractive"
